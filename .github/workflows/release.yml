@@ -3,6 +3,12 @@ name: Release Binaries
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and attach binaries for (e.g. v1.2.14)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         exclude:
           - goos: windows
@@ -24,39 +31,47 @@ jobs:
         goarch: [amd64, arm64, 386, arm]
 
     steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.24"
 
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
-          VERSION: ${{ github.event.release.tag_name }}
+          VERSION: ${{ steps.tag.outputs.tag }}
         run: |
           BINARY_NAME=komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           if [ "${{ matrix.goos }}" = "windows" ]; then
             BINARY_NAME=${BINARY_NAME}.exe
-          elif [ "${{ matrix.goos }}" = "darwin" ]; then
-            # macOS binaries typically do not have a file extension
-            true
           fi
-            go build -trimpath -ldflags="-X github.com/komari-monitor/komari-agent/update.CurrentVersion=${VERSION}" -o $BINARY_NAME
+          go build -trimpath -ldflags="-X github.com/komari-monitor/komari-agent/update.CurrentVersion=${VERSION}" -o "$BINARY_NAME"
 
       - name: Upload binary to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           BINARY_NAME=komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           if [ "${{ matrix.goos }}" = "windows" ]; then
             BINARY_NAME=${BINARY_NAME}.exe
-          elif [ "${{ matrix.goos }}" = "darwin" ]; then
-            true
           fi
-          gh release upload ${{ github.event.release.tag_name }} $BINARY_NAME --repo ${{ github.repository }}
+          gh release upload "$TAG" "$BINARY_NAME" --repo "${{ github.repository }}" --clobber
         shell: bash

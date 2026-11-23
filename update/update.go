@@ -15,7 +15,7 @@ import (
 
 var (
 	CurrentVersion string = "0.0.1"
-	Repo           string = "ctfox66/my-tz-kori"
+	Repo           string = "ctfox66/my-tz-kori-agent"
 )
 
 // parseVersion 解析可能带有 v/V 前缀，以及预发布或构建元数据的版本字符串
